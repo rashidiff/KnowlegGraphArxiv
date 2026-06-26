@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Light Mode (Blue & White) */
+  --background: #F8FAFC;      /* Soft ice-blue white */
+  --foreground: #0F172A;      /* Dark slate text */
+  --border: #E2E8F0;          /* Light gray border */
+  --primary: #2563EB;         /* Royal blue */
+  --primary-hover: #1D4ED8;   /* Darker royal blue */
+  --card-bg: #FFFFFF;         /* Pure white card */
+  --sidebar-bg: #FFFFFF;      /* Pure white sidebar */
+}
+
+.dark {
+  /* Dark Mode */
+  --background: #0B0F19;      /* Sleek deep blue-black */
+  --foreground: #F1F5F9;      /* Light gray text */
+  --border: #1E293B;          /* Muted dark border */
+  --primary: #3B82F6;         /* Electric blue */
+  --primary-hover: #2563EB;   /* Royal blue */
+  --card-bg: #111827;         /* Dark card background */
+  --sidebar-bg: #0E1322;      /* Slightly different dark panel */
+}
+
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+body {
+  color: var(--foreground);
+  background-color: var(--background);
+  font-family: 'Outfit', 'Inter', sans-serif;
+  overflow: hidden;
+}
+
+/* Custom premium scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B0F19;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1E293B;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Dynamic pulse animation for active agent updates */
+@keyframes agentPulse {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.agent-thinking {
+  animation: agentPulse 2s infinite ease-in-out;
+}

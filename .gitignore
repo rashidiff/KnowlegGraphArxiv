@@ -1,0 +1,45 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Python virtual environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local databases and dynamic data
+data/*.db
+data/uploads/
+data/corpus_metadata.json
+
+# Next.js build output and dependencies
+frontend/node_modules/
+frontend/.next/
+node_modules/
+.next/
+out/
+build/
+
+# Environment files (must not be committed)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS files
+.DS_Store
+Thumbs.db
+*.log
