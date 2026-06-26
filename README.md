@@ -35,11 +35,7 @@ An agentic, graph-reasoning web application designed to navigate, traverse, and 
 ## ⚙️ Installation & Setup
 
 ### 1. Configure Environment variables
-Copy `.env.example` to `.env` and configure your API key (the system supports DeepSeek by default, compatible with OpenAI SDK):
-```bash
-cp .env.example .env
-```
-Ensure your `OPENAI_API_KEY` (e.g. DeepSeek API key) is defined.
+Create a `.env` file in the root directory and configure your API key (the system supports DeepSeek by default, compatible with OpenAI SDK). Ensure your `OPENAI_API_KEY` is defined.
 
 ### 2. Setup Python Backend Environment
 ```bash
