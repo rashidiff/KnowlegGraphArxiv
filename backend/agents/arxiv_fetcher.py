@@ -237,6 +237,10 @@ def search_semantic_scholar(query: str, max_results: int = 20) -> List[Dict[str,
     Falls back silently on error.
     """
     print(f"[S2 Search] Query: '{query[:80]}'  limit={max_results}")
+    # S2's search API has no title/abstract-only mode — it matches across all
+    # paper fields. Post-filter to significant query terms actually present in
+    # title/abstract, so results stay scoped to those two fields.
+    query_terms = [w.lower() for w in re.findall(r"[A-Za-z0-9]{4,}", query)]
     try:
         resp = requests.get(
             f"{S2_API_BASE}/paper/search",
@@ -256,6 +260,14 @@ def search_semantic_scholar(query: str, max_results: int = 20) -> List[Dict[str,
             if not item or not item.get("paperId") or not item.get("title"):
                 continue
 
+            title_text    = (item.get("title") or "").strip()
+            abstract_text = (item.get("abstract") or "").strip()
+
+            if query_terms:
+                haystack = f"{title_text} {abstract_text}".lower()
+                if not any(term in haystack for term in query_terms):
+                    continue
+
             arxiv_id = (item.get("externalIds") or {}).get("ArXiv")
             refs      = [r["paperId"] for r in item.get("references", []) if r and r.get("paperId")]
             authors   = [a.get("name", "") for a in item.get("authors", [])]
@@ -263,8 +275,8 @@ def search_semantic_scholar(query: str, max_results: int = 20) -> List[Dict[str,
             results.append({
                 "id":             item["paperId"],
                 "arxiv_id":       arxiv_id,
-                "title":          (item.get("title") or "").strip(),
-                "abstract":       (item.get("abstract") or "").strip(),
+                "title":          title_text,
+                "abstract":       abstract_text,
                 "authors":        authors,
                 "year":           item.get("year") or 2024,
                 "venue":          item.get("venue") or "arXiv",
