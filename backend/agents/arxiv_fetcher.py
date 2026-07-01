@@ -40,10 +40,13 @@ def search_arxiv(keywords: List[str], max_results: int = 30) -> List[Dict[str, A
         kw = kw.strip()
         words = kw.split()
         if len(words) >= 3:
-            return f'all:"{" ".join(words[:2])}"'
+            term = f'"{" ".join(words[:2])}"'
         elif len(words) == 2:
-            return f'all:"{kw}"'
-        return f"all:{kw}"
+            term = f'"{kw}"'
+        else:
+            term = kw
+        # Restrict matching to title/abstract only (not authors, comments, etc.)
+        return f"(ti:{term} OR abs:{term})"
 
     primary = _fmt(keywords[0])
     secondary_parts = list(dict.fromkeys(_fmt(k) for k in keywords[1:5]))  # dedup
@@ -69,8 +72,8 @@ def search_arxiv(keywords: List[str], max_results: int = 30) -> List[Dict[str, A
     if root is None:
         # Fallback: just the first keyword, single word
         fw = keywords[0].split()[0]
-        print(f"[arXiv] 0 results – fallback: all:{fw}")
-        root = _fetch(f"{ARXIV_CATS} AND all:{fw}")
+        print(f"[arXiv] 0 results – fallback: ti/abs:{fw}")
+        root = _fetch(f"{ARXIV_CATS} AND (ti:{fw} OR abs:{fw})")
     if root is None:
         return []
 
