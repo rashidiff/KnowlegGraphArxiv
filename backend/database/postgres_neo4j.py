@@ -258,7 +258,22 @@ class PostgresNeo4jDB(BaseDatabase):
             return []
 
         all_papers = [dict(row) for row in rows]
-        
+
+        # Hard filter: only papers whose title or abstract actually contains
+        # one of the query keywords — keyword ranking below is a bonus on top
+        # of this, not a substitute for it.
+        if keywords:
+            all_papers = [
+                p for p in all_papers
+                if any(
+                    kw.lower() in (p["title"] or "").lower()
+                    or kw.lower() in (p["abstract"] or "").lower()
+                    for kw in keywords
+                )
+            ]
+            if not all_papers:
+                return []
+
         # Norm statistics
         years = [p["year"] for p in all_papers if p["year"] is not None]
         min_year = min(years) if years else 2000
