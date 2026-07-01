@@ -81,22 +81,22 @@ Output JSON:
     db = get_db()
 
     # ── Step 2A: arXiv search (good for very recent papers) ──────────────
-    arxiv_a = search_arxiv(keywords, max_results=100)
+    arxiv_a = search_arxiv(keywords, max_results=200)
 
     # ── Step 2B: arXiv second pass with broader keywords ─────────────────
     arxiv_b: list = []
     if broad_keywords:
         combined_broad = broad_keywords + ([keywords[0]] if keywords else [])
-        arxiv_b = search_arxiv(combined_broad, max_results=50)
+        arxiv_b = search_arxiv(combined_broad, max_results=150)
 
     # ── Step 2C: arXiv raw user query search (highly robust) ─────────────
-    arxiv_raw = search_arxiv([query], max_results=100)
+    arxiv_raw = search_arxiv([query], max_results=200)
 
     # ── Step 2D: Semantic Scholar direct search (best for citation data) ──
     # Query with both the raw user query (for best recall) and keyword-based query
     s2_papers_raw = search_semantic_scholar(query, max_results=100)
     s2_query  = " ".join(keywords[:3])
-    s2_papers_kw  = search_semantic_scholar(s2_query, max_results=50)
+    s2_papers_kw  = search_semantic_scholar(s2_query, max_results=100)
     
     # Deduplicate Semantic Scholar papers first
     s2_papers = []
@@ -134,7 +134,7 @@ Output JSON:
         query_embedding=query_embedding,
         keywords=keywords,
         topic=topic,
-        limit=15,
+        limit=100,
     )
 
     # ── Step 5: Merge & deduplicate ────────────────────────────────────────
@@ -164,7 +164,7 @@ Output JSON:
         return p.get("final_score", 0.5) + kw_bonus + cite_bonus
 
     merged.sort(key=_score, reverse=True)
-    final_results = merged[:100]
+    final_results = merged[:500]
 
     print(f"[Retriever] Returning {len(final_results)} papers to pipeline")
     return {"retrieved_papers": final_results}
