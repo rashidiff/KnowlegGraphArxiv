@@ -207,6 +207,21 @@ class LocalSQLiteDB(BaseDatabase):
         if not all_papers:
             return []
 
+        # Hard filter: only papers whose title or abstract actually contains
+        # one of the query keywords — keyword ranking below is a bonus on top
+        # of this, not a substitute for it.
+        if keywords:
+            all_papers = [
+                p for p in all_papers
+                if any(
+                    kw.lower() in (p["title"] or "").lower()
+                    or kw.lower() in (p["abstract"] or "").lower()
+                    for kw in keywords
+                )
+            ]
+            if not all_papers:
+                return []
+
         # Ensure graph metrics are active
         pageranks = nx.pagerank(self._graph) if self._graph and len(self._graph) > 0 else {}
         
