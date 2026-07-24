@@ -235,27 +235,44 @@ class LocalSQLiteDB(BaseDatabase):
         max_citations = max(citation_counts) if citation_counts else 1
         max_citations_log = np.log1p(max_citations)
 
-        # Calculate scores for each paper
-        scored_papers = []
+        # Calculate scores for each paper using vectorized similarity computation
         q_vec = np.array(query_embedding, dtype=np.float32)
         q_norm = np.linalg.norm(q_vec)
 
-        for p in all_papers:
+        # Build 2D embedding matrix for all papers with valid embeddings
+        valid_indices = []
+        embeddings_list = []
+        for idx, p in enumerate(all_papers):
+            if p["embedding"] is not None:
+                vec = np.frombuffer(p["embedding"], dtype=np.float32)
+                if vec.shape[0] == q_vec.shape[0]:
+                    valid_indices.append(idx)
+                    embeddings_list.append(vec)
+
+        similarities_array = np.zeros(len(all_papers), dtype=np.float32)
+        if embeddings_list and q_norm > 0:
+            emb_matrix = np.vstack(embeddings_list)
+            p_norms = np.linalg.norm(emb_matrix, axis=1)
+            valid_norms = p_norms > 0
+            dots = np.dot(emb_matrix, q_vec)
+            sims = np.zeros_like(dots)
+            sims[valid_norms] = dots[valid_norms] / (p_norms[valid_norms] * q_norm)
+            sims = (sims + 1.0) / 2.0
+            for array_idx, paper_idx in enumerate(valid_indices):
+                similarities_array[paper_idx] = sims[array_idx]
+
+        max_centrality = max(pageranks.values()) if pageranks else 1.0
+        scored_papers = []
+
+        for idx, p in enumerate(all_papers):
             # A. Semantic Similarity (45%)
-            similarity = 0.0
-            if p["embedding"] is not None and q_norm > 0:
-                p_vec = np.frombuffer(p["embedding"], dtype=np.float32)
-                p_norm = np.linalg.norm(p_vec)
-                if p_norm > 0:
-                    similarity = float(np.dot(p_vec, q_vec) / (p_norm * q_norm))
-                    # Map cosine similarity [-1, 1] to [0, 1]
-                    similarity = (similarity + 1.0) / 2.0
+            similarity = float(similarities_array[idx])
             
             # If keywords provided, perform simple keyword bonus
             keyword_score = 0.0
             if keywords:
-                title_lower = p["title"].lower()
-                abstract_lower = p["abstract"].lower()
+                title_lower = (p["title"] or "").lower()
+                abstract_lower = (p["abstract"] or "").lower()
                 matches = sum(1 for kw in keywords if kw.lower() in title_lower or kw.lower() in abstract_lower)
                 keyword_score = matches / len(keywords)
                 # Blend keyword score with semantic similarity (70% semantic, 30% keyword)
@@ -267,8 +284,6 @@ class LocalSQLiteDB(BaseDatabase):
 
             # C. Graph Centrality (PageRank) (15%)
             centrality = pageranks.get(p["id"], 0.0)
-            # Normalize centrality
-            max_centrality = max(pageranks.values()) if pageranks else 1.0
             normalized_centrality = centrality / max_centrality if max_centrality > 0 else 0.0
 
             # D. Recency Score (10%)
@@ -290,8 +305,8 @@ class LocalSQLiteDB(BaseDatabase):
                     0.05 * venue_quality
                 )
 
-            p["authors"] = json.loads(p["authors"]) if p["authors"] else []
-            p["section_headers"] = json.loads(p["section_headers"]) if p["section_headers"] else []
+            p["authors"] = json.loads(p["authors"]) if isinstance(p["authors"], str) else (p["authors"] or [])
+            p["section_headers"] = json.loads(p["section_headers"]) if isinstance(p["section_headers"], str) else (p["section_headers"] or [])
             p.pop("embedding", None) # Don't return bytes in results
             p["final_score"] = final_score
             p["graph_centrality"] = normalized_centrality
