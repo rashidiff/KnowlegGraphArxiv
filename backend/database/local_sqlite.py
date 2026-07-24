@@ -491,8 +491,9 @@ class LocalSQLiteDB(BaseDatabase):
         # 1. PageRank
         pr = nx.pagerank(self._graph)
 
-        # 2. Betweenness centrality
-        betweenness = nx.betweenness_centrality(self._graph)
+        # 2. Betweenness centrality (sample up to 100 nodes for fast calculation)
+        k_sample = min(100, len(self._graph)) if len(self._graph) > 0 else None
+        betweenness = nx.betweenness_centrality(self._graph, k=k_sample) if k_sample else {}
 
         sorted_pr = sorted(pr.items(), key=lambda x: x[1], reverse=True)
         sorted_betweenness = sorted(betweenness.items(), key=lambda x: x[1], reverse=True)
@@ -549,8 +550,17 @@ class LocalSQLiteDB(BaseDatabase):
     def _compute_disconnected_pairs(self) -> List[Dict[str, str]]:
         """
         Find taxonomy topic pairs with no citation path between them.
-        Runs once per cache cycle (not on every query).
+        Uses connected component map for instant O(1) connectivity checks.
         """
+        if not self._graph or len(self._graph) == 0:
+            return []
+        
+        undirected_G = self._graph.to_undirected()
+        node_to_comp = {}
+        for comp_idx, comp in enumerate(nx.connected_components(undirected_G)):
+            for node in comp:
+                node_to_comp[node] = comp_idx
+
         disconnected: List[Dict[str, str]] = []
         for i, t1 in enumerate(TAXONOMY):
             for t2 in TAXONOMY[i + 1:]:
@@ -560,8 +570,13 @@ class LocalSQLiteDB(BaseDatabase):
                     continue
                 has_path = False
                 for p1 in papers_t1:
+                    pid1 = p1["id"]
+                    comp1 = node_to_comp.get(pid1)
+                    if comp1 is None:
+                        continue
                     for p2 in papers_t2:
-                        if self.get_citation_path(p1["id"], p2["id"]):
+                        pid2 = p2["id"]
+                        if node_to_comp.get(pid2) == comp1:
                             has_path = True
                             break
                     if has_path:

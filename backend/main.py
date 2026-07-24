@@ -134,17 +134,6 @@ async def chat_clarify_endpoint(req: ClarifyRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent workflow error: {str(e)}")
 
-@app.get("/api/papers/{paper_id}")
-async def get_paper_endpoint(paper_id: str):
-    """
-    Get full metadata details of a specific paper.
-    """
-    db = get_db()
-    paper = db.get_paper(paper_id)
-    if not paper:
-        raise HTTPException(status_code=404, detail="Paper not found")
-    return paper
-
 @app.get("/api/health")
 async def health_check():
     """Detailed health diagnostic endpoint."""
@@ -190,6 +179,17 @@ async def search_papers_endpoint(
         "offset": offset,
         "papers": paginated
     }
+
+@app.get("/api/papers/{paper_id}")
+async def get_paper_endpoint(paper_id: str):
+    """
+    Get full metadata details of a specific paper.
+    """
+    db = get_db()
+    paper = db.get_paper(paper_id)
+    if not paper:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    return paper
 
 @app.get("/api/graph/explore")
 async def explore_graph(focus_id: Optional[str] = None):
