@@ -59,14 +59,17 @@ def search_arxiv(keywords: List[str], max_results: int = 30) -> List[Dict[str, A
     print(f"[arXiv] Query: {query[:130]}")
 
     def _fetch(q: str) -> Optional[ET.Element]:
-        try:
-            r = requests.get(ARXIV_API, params={**base_params, "search_query": q}, timeout=15)
-            r.raise_for_status()
-            root = ET.fromstring(r.content)
-            return root if root.findall(f"{{{ATOM_NS}}}entry") else None
-        except Exception as e:
-            print(f"[arXiv] fetch error: {e}")
-            return None
+        for attempt in range(3):
+            try:
+                r = requests.get(ARXIV_API, params={**base_params, "search_query": q}, timeout=15)
+                r.raise_for_status()
+                root = ET.fromstring(r.content)
+                return root if root.findall(f"{{{ATOM_NS}}}entry") else None
+            except Exception as e:
+                print(f"[arXiv] fetch attempt {attempt + 1} error: {e}")
+                if attempt < 2:
+                    time.sleep(1.0 * (attempt + 1))
+        return None
 
     root = _fetch(query)
     if root is None:

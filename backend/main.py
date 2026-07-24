@@ -145,6 +145,52 @@ async def get_paper_endpoint(paper_id: str):
         raise HTTPException(status_code=404, detail="Paper not found")
     return paper
 
+@app.get("/api/health")
+async def health_check():
+    """Detailed health diagnostic endpoint."""
+    db = get_db()
+    metrics = db.get_graph_metrics() or {}
+    stats = metrics.get("graph_stats", {})
+    return {
+        "status": "ok",
+        "service": "Agentic Knowledge Graph Navigator",
+        "version": "1.0.0",
+        "database_driver": type(db).__name__,
+        "graph_stats": stats,
+    }
+
+@app.get("/api/papers/search")
+async def search_papers_endpoint(
+    q: Optional[str] = None,
+    topic: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0
+):
+    """
+    Search papers in the corpus directly using keywords or topic filter with pagination.
+    """
+    db = get_db()
+    model = get_embedding_model()
+    
+    query_text = q or ""
+    keywords = [k.strip() for k in query_text.split() if k.strip()]
+    query_emb = model.encode(query_text).tolist() if query_text else [0.0] * 384
+    
+    results = db.search_papers(
+        query_embedding=query_emb,
+        keywords=keywords,
+        topic=topic,
+        limit=limit + offset
+    )
+    
+    paginated = results[offset:offset + limit]
+    return {
+        "total_results": len(results),
+        "limit": limit,
+        "offset": offset,
+        "papers": paginated
+    }
+
 @app.get("/api/graph/explore")
 async def explore_graph(focus_id: Optional[str] = None):
     """
@@ -268,6 +314,12 @@ async def upload_pdf(
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
+    content = await file.read()
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size exceeds maximum 20MB limit.")
+    if not content.startswith(b"%PDF-"):
+        raise HTTPException(status_code=400, detail="Invalid PDF file format header.")
+
     from backend.scripts.seed_data_v2 import compute_relevance_and_classify, extract_entities
 
     temp_dir = "data/uploads"
@@ -275,7 +327,7 @@ async def upload_pdf(
     temp_path = os.path.join(temp_dir, file.filename)
 
     with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        buffer.write(content)
 
     try:
         from pypdf import PdfReader
