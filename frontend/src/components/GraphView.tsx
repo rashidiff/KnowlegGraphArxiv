@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Network, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
+import { Network, ZoomIn, ZoomOut, Maximize, Download } from 'lucide-react';
 
 // Dynamically load ForceGraph2D as it relies on the browser canvas and window object
 const ForceGraph2D = dynamic(
@@ -150,6 +150,18 @@ export default function GraphView({
     }
   };
 
+  const handleExportJSON = () => {
+    if (!hasData) return;
+    const jsonStr = JSON.stringify(graphData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'knowledge_graph.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Safe checks for empty data
   const hasData = graphData && graphData.nodes && graphData.nodes.length > 0;
 
@@ -183,6 +195,15 @@ export default function GraphView({
           >
             <Maximize size={16} />
           </button>
+          {hasData && (
+            <button 
+              onClick={handleExportJSON}
+              className="p-1 hover:bg-background text-foreground/70 hover:text-foreground rounded transition"
+              title="Export Graph JSON"
+            >
+              <Download size={16} />
+            </button>
+          )}
         </div>
       </div>
 
