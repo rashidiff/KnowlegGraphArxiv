@@ -27,6 +27,7 @@ data/corpus_metadata.json
 # Next.js build output and dependencies
 frontend/node_modules/
 frontend/.next/
+frontend/*.tsbuildinfo
 node_modules/
 .next/
 out/
