@@ -35,7 +35,9 @@ An agentic, graph-reasoning web application designed to navigate, traverse, and 
 ## ⚙️ Installation & Setup
 
 ### 1. Configure Environment variables
-Create a `.env` file in the root directory and configure your API key (the system supports DeepSeek by default, compatible with OpenAI SDK). Ensure your `OPENAI_API_KEY` is defined.
+Copy `.env.example` to `.env` and configure your API key (the system supports DeepSeek by default, compatible with OpenAI SDK). Ensure your `OPENAI_API_KEY` is defined.
+
+Keep `.env` local. Do not commit real API keys, database passwords, generated SQLite files, uploads, or corpus metadata.
 
 ### 2. Setup Python Backend Environment
 ```bash
@@ -73,6 +75,15 @@ This is the fastest, zero-config method.
     ```
 2.  Once databases boot, run the seeding script `python backend/scripts/seed_data.py 2500`. It will automatically detect Postgres and Neo4j, populate them, and start Uvicorn/Next.js.
 
+---
+
+## Production Notes
+
+* Set `CORS_ALLOWED_ORIGINS` to the exact frontend origins instead of using broad browser access.
+* Store `OPENAI_API_KEY`, database passwords, and provider credentials in the deployment platform's secret manager.
+* Keep upload and database storage on a persistent volume if the SQLite fallback is used.
+* Run `python -m pytest` before deployment; the suite includes checks that real `.env` files and common API key patterns are not committed.
+* Restrict the corpus reset endpoint before exposing the API publicly.
 
 
 ## 💡 Example Queries
