@@ -1,5 +1,5 @@
 import pytest
-from backend.main import UPLOAD_DIR, _safe_upload_path
+from backend.main import UPLOAD_DIR, _require_admin_token, _safe_upload_path
 
 def test_read_root(api_client):
     response = api_client.get("/")
@@ -71,3 +71,12 @@ def test_safe_upload_path_ignores_client_filename_path():
         assert path.suffix == ".pdf"
     finally:
         path.unlink(missing_ok=True)
+
+def test_admin_token_required_when_configured(monkeypatch):
+    monkeypatch.setenv("CORPUS_RESET_TOKEN", "secret-token")
+
+    with pytest.raises(Exception) as exc_info:
+        _require_admin_token(None)
+
+    assert getattr(exc_info.value, "status_code", None) == 403
+    _require_admin_token("secret-token")

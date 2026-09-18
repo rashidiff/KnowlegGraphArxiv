@@ -3,9 +3,10 @@ import sys
 import json
 import shutil
 import uuid
+import secrets
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
@@ -39,6 +40,12 @@ def _safe_upload_path(filename: str | None) -> Path:
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     return UPLOAD_DIR / f"{uuid.uuid4().hex}.pdf"
+
+
+def _require_admin_token(token: str | None) -> None:
+    expected = os.getenv("CORPUS_RESET_TOKEN", "").strip()
+    if expected and not secrets.compare_digest(token or "", expected):
+        raise HTTPException(status_code=403, detail="Invalid or missing admin token.")
 
 app = FastAPI(title="Agentic Research Paper Knowledge Graph Navigator API")
 
@@ -487,12 +494,14 @@ You must output a JSON object in this format:
 # ── Corpus reset ─────────────────────────────────────────────────────────────
 
 @app.delete("/api/corpus/reset")
-async def reset_corpus():
+async def reset_corpus(x_admin_token: Optional[str] = Header(default=None)):
     """
     Drop all cached papers and citations, then re-initialise the DB schema.
     Use this to clear the old static seed corpus so the system starts fresh
     and builds its knowledge graph dynamically from arXiv queries.
     """
+    _require_admin_token(x_admin_token)
+
     import sqlite3 as _sqlite3
     try:
         conn = _sqlite3.connect(SQLITE_DB_PATH)
