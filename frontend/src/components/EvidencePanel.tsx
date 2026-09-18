@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { FileText, Award, BarChart3, Database, Search, ArrowRight, User } from 'lucide-react';
+import { apiUrl } from '@/lib/api';
 
 interface PaperDetails {
   id: string;
@@ -57,7 +58,7 @@ export default function EvidencePanel({
   const fetchPaperDetails = async (id: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/papers/${id}`);
+      const res = await fetch(apiUrl(`/api/papers/${id}`));
       if (res.ok) {
         const data = await res.json();
         setPaperDetails(data);

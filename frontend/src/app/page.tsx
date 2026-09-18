@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Chat from '@/components/Chat';
 import GraphView from '@/components/GraphView';
 import EvidencePanel from '@/components/EvidencePanel';
+import { apiUrl } from '@/lib/api';
 import { BookOpen, AlertCircle, FileUp, Sparkles, RefreshCw, Clock, Trash2, Sun, Moon } from 'lucide-react';
 
 interface Message {
@@ -45,7 +46,7 @@ export default function Home() {
 
   const fetchInitialGraph = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/graph/explore');
+      const res = await fetch(apiUrl('/api/graph/explore'));
       if (res.ok) {
         const data = await res.json();
         setGraphData(data);
@@ -57,7 +58,7 @@ export default function Home() {
 
   const fetchCorpusStatus = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/corpus/status');
+      const res = await fetch(apiUrl('/api/corpus/status'));
       if (res.ok) {
         const data = await res.json();
         setCorpusStatus(data);
@@ -78,7 +79,9 @@ export default function Home() {
   const handleResetCorpus = async () => {
     if (!window.confirm('Clear all cached papers? The graph will rebuild dynamically from your queries.')) return;
     try {
-      const res = await fetch('http://localhost:8000/api/corpus/reset', { method: 'DELETE' });
+      const token = window.prompt('Admin token (leave blank if not configured):') || '';
+      const headers = token ? { 'X-Admin-Token': token } : undefined;
+      const res = await fetch(apiUrl('/api/corpus/reset'), { method: 'DELETE', headers });
       if (res.ok) {
         setGraphData({ nodes: [], links: [] });
         setGraphContext({});
@@ -98,7 +101,7 @@ export default function Home() {
     if (syncRunning) return;
     setSyncRunning(true);
     try {
-      const res = await fetch('http://localhost:8000/api/refresh', { method: 'POST' });
+      const res = await fetch(apiUrl('/api/refresh'), { method: 'POST' });
       if (!res.ok) throw new Error('Refresh failed');
       // Poll for completion every 10 seconds
       syncPollRef.current = setInterval(fetchCorpusStatus, 10000);
@@ -120,7 +123,7 @@ export default function Home() {
     setClarifyingQuestion(null);
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat', {
+      const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: userMessage }),
@@ -154,7 +157,7 @@ export default function Home() {
     setClarifyingQuestion(null);
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat/clarify', {
+      const response = await fetch(apiUrl('/api/chat/clarify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -229,7 +232,7 @@ export default function Home() {
     formData.append('topic', 'LLM Agents');
 
     try {
-      const res = await fetch('http://localhost:8000/api/upload', {
+      const res = await fetch(apiUrl('/api/upload'), {
         method: 'POST',
         body: formData,
       });

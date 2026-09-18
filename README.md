@@ -39,6 +39,8 @@ Copy `.env.example` to `.env` and configure your API key (the system supports De
 
 Keep `.env` local. Do not commit real API keys, database passwords, generated SQLite files, uploads, or corpus metadata.
 
+For the frontend, set `NEXT_PUBLIC_API_BASE_URL` when the FastAPI server is not running at `http://localhost:8000`.
+
 ### 2. Setup Python Backend Environment
 ```bash
 pip install -r requirements.txt
@@ -80,6 +82,8 @@ This is the fastest, zero-config method.
 ## Production Notes
 
 * Set `CORS_ALLOWED_ORIGINS` to the exact frontend origins instead of using broad browser access.
+* Set `NEXT_PUBLIC_API_BASE_URL` to the public backend URL used by the browser.
+* Set `CORPUS_RESET_TOKEN` and send it as `X-Admin-Token` before exposing the corpus reset action.
 * Store `OPENAI_API_KEY`, database passwords, and provider credentials in the deployment platform's secret manager.
 * Keep upload and database storage on a persistent volume if the SQLite fallback is used.
 * Run `python -m pytest` before deployment; the suite includes checks that real `.env` files and common API key patterns are not committed.
