@@ -4,25 +4,25 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "next": "14.2.3",
+    "d3": "^7.9.0",
+    "lucide-react": "0.378.0",
+    "next": "^16.3.5",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "lucide-react": "0.378.0",
-    "react-force-graph-2d": "1.25.4",
-    "d3": "^7.9.0"
+    "react-force-graph-2d": "1.25.4"
   },
   "devDependencies": {
-    "typescript": "^5.4.5",
     "@types/node": "^20.12.12",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "postcss": "^8.4.38",
+    "autoprefixer": "^10.6.1",
+    "postcss": "^8.5.28",
     "tailwindcss": "^3.4.3",
-    "autoprefixer": "^8.5.0"
+    "typescript": "^5.4.5"
   }
 }
