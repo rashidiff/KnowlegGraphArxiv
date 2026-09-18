@@ -3,9 +3,9 @@ import sys
 import json
 import shutil
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
 
 # Adjust path to import local modules
@@ -18,12 +18,18 @@ from backend.agents.retriever import get_embedding_model
 # Load environment
 load_dotenv()
 
+
+def _parse_allowed_origins() -> list[str]:
+    raw = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return origins or ["http://localhost:3000", "http://127.0.0.1:3000"]
+
 app = FastAPI(title="Agentic Research Paper Knowledge Graph Navigator API")
 
 # Setup CORS so the Next.js frontend can communicate with the FastAPI backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this to the frontend URL
+    allow_origins=_parse_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,15 +37,31 @@ app.add_middleware(
 
 # Pydantic schemas
 class ChatRequest(BaseModel):
-    query: str
-    history: List[Dict[str, Any]] = []
+    query: str = Field(min_length=1, max_length=2000)
+    history: List[Dict[str, Any]] = Field(default_factory=list, max_length=30)
+
+    @field_validator("query")
+    @classmethod
+    def _strip_query(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("query must not be empty")
+        return stripped
 
 class ClarifyRequest(BaseModel):
-    query: str
-    question: str
-    answer: str
-    history: List[Dict[str, Any]] = []
-    clarification_answers: List[Dict[str, str]] = []
+    query: str = Field(min_length=1, max_length=2000)
+    question: str = Field(min_length=1, max_length=1000)
+    answer: str = Field(min_length=1, max_length=2000)
+    history: List[Dict[str, Any]] = Field(default_factory=list, max_length=30)
+    clarification_answers: List[Dict[str, str]] = Field(default_factory=list, max_length=10)
+
+    @field_validator("query", "question", "answer")
+    @classmethod
+    def _strip_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("value must not be empty")
+        return stripped
 
 # Instantiate the compiled LangGraph workflow
 graph_workflow = build_workflow()
@@ -152,8 +174,8 @@ async def health_check():
 async def search_papers_endpoint(
     q: Optional[str] = None,
     topic: Optional[str] = None,
-    limit: int = 20,
-    offset: int = 0
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0, le=10000),
 ):
     """
     Search papers in the corpus directly using keywords or topic filter with pagination.

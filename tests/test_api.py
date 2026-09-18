@@ -37,6 +37,14 @@ def test_search_papers_endpoint(api_client):
     assert "papers" in data
     assert len(data["papers"]) <= 5
 
+def test_search_papers_rejects_excessive_limit(api_client):
+    response = api_client.get("/api/papers/search?q=agent&limit=1000")
+    assert response.status_code == 422
+
+def test_chat_rejects_empty_query(api_client):
+    response = api_client.post("/api/chat", json={"query": "   "})
+    assert response.status_code == 422
+
 def test_upload_pdf_invalid_extension(api_client):
     response = api_client.post(
         "/api/upload",
