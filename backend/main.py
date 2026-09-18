@@ -29,6 +29,8 @@ def _parse_allowed_origins() -> list[str]:
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
+SQLITE_DB_PATH = DATA_DIR / "research_navigator.db"
+CORPUS_METADATA_PATH = DATA_DIR / "corpus_metadata.json"
 
 
 def _safe_upload_path(filename: str | None) -> Path:
@@ -274,10 +276,9 @@ async def corpus_audit():
     # 3. Corpus metadata file
     excluded_count = 0
     quality_score = 1.0
-    meta_path = "data/corpus_metadata.json"
-    if os.path.exists(meta_path):
+    if CORPUS_METADATA_PATH.exists():
         try:
-            with open(meta_path, "r") as f:
+            with open(CORPUS_METADATA_PATH, "r") as f:
                 meta = json.load(f)
                 excluded_count = meta.get("excluded_papers_count", 0)
                 quality_score = meta.get("quality_score", 1.0)
@@ -306,7 +307,7 @@ async def graph_health():
     edge_coverage = None
     try:
         import sqlite3 as _sqlite3
-        conn = _sqlite3.connect("data/research_navigator.db")
+        conn = _sqlite3.connect(SQLITE_DB_PATH)
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM citations")
         total_rows = cur.fetchone()[0]
@@ -493,9 +494,8 @@ async def reset_corpus():
     and builds its knowledge graph dynamically from arXiv queries.
     """
     import sqlite3 as _sqlite3
-    db_path = "data/research_navigator.db"
     try:
-        conn = _sqlite3.connect(db_path)
+        conn = _sqlite3.connect(SQLITE_DB_PATH)
         conn.execute("PRAGMA foreign_keys = OFF")
         conn.execute("DELETE FROM citations")
         conn.execute("DELETE FROM paper_entities")
@@ -511,9 +511,7 @@ async def reset_corpus():
         db._invalidate_cache()
 
         # Clear corpus metadata file
-        meta_path = "data/corpus_metadata.json"
-        if os.path.exists(meta_path):
-            os.remove(meta_path)
+        CORPUS_METADATA_PATH.unlink(missing_ok=True)
 
         return {"status": "ok", "message": "Corpus cleared. The graph will now build dynamically from arXiv queries."}
     except Exception as e:
@@ -557,9 +555,9 @@ async def corpus_status():
         pass
 
     meta: Dict[str, Any] = {}
-    if os.path.exists("data/corpus_metadata.json"):
+    if CORPUS_METADATA_PATH.exists():
         try:
-            with open("data/corpus_metadata.json") as f:
+            with open(CORPUS_METADATA_PATH) as f:
                 meta = json.load(f)
         except Exception:
             pass
