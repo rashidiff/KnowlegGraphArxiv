@@ -2,6 +2,8 @@ import os
 import sys
 import json
 import shutil
+import uuid
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +25,18 @@ def _parse_allowed_origins() -> list[str]:
     raw = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
     origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
     return origins or ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = PROJECT_ROOT / "data"
+UPLOAD_DIR = DATA_DIR / "uploads"
+
+
+def _safe_upload_path(filename: str | None) -> Path:
+    suffix = Path(filename or "").suffix.lower()
+    if suffix != ".pdf":
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    return UPLOAD_DIR / f"{uuid.uuid4().hex}.pdf"
 
 app = FastAPI(title="Agentic Research Paper Knowledge Graph Navigator API")
 
@@ -333,8 +347,7 @@ async def upload_pdf(
     Returns a relevance_score and warning if the paper appears off-topic.
     Set force=true to index regardless of relevance score.
     """
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    temp_path = _safe_upload_path(file.filename)
 
     content = await file.read()
     if len(content) > 20 * 1024 * 1024:
@@ -343,10 +356,6 @@ async def upload_pdf(
         raise HTTPException(status_code=400, detail="Invalid PDF file format header.")
 
     from backend.scripts.seed_data_v2 import compute_relevance_and_classify, extract_entities
-
-    temp_dir = "data/uploads"
-    os.makedirs(temp_dir, exist_ok=True)
-    temp_path = os.path.join(temp_dir, file.filename)
 
     with open(temp_path, "wb") as buffer:
         buffer.write(content)
@@ -405,7 +414,7 @@ You must output a JSON object in this format:
         is_off_topic = relevance_score < 0.3 or (len(detected_topics) == 1 and "Other" in detected_topics)
 
         if is_off_topic and not force:
-            os.remove(temp_path)
+            temp_path.unlink(missing_ok=True)
             return {
                 "warning": "off_topic",
                 "message": (
@@ -457,7 +466,7 @@ You must output a JSON object in this format:
 
         db = get_db()
         db.insert_papers([paper_data])
-        os.remove(temp_path)
+        temp_path.unlink(missing_ok=True)
 
         return {
             "message": "Paper successfully uploaded and cataloged.",
@@ -470,8 +479,7 @@ You must output a JSON object in this format:
     except HTTPException:
         raise
     except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        temp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Failed to process PDF: {str(e)}")
 
 

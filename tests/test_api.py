@@ -1,4 +1,5 @@
 import pytest
+from backend.main import UPLOAD_DIR, _safe_upload_path
 
 def test_read_root(api_client):
     response = api_client.get("/")
@@ -61,3 +62,12 @@ def test_upload_pdf_invalid_header(api_client):
     )
     assert response.status_code == 400
     assert "Invalid PDF" in response.json()["detail"]
+
+def test_safe_upload_path_ignores_client_filename_path():
+    path = _safe_upload_path("../../evil.pdf")
+    try:
+        assert path.parent == UPLOAD_DIR
+        assert path.name != "evil.pdf"
+        assert path.suffix == ".pdf"
+    finally:
+        path.unlink(missing_ok=True)
