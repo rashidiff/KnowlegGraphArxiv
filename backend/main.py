@@ -237,13 +237,44 @@ async def get_paper_endpoint(paper_id: str):
     return paper
 
 @app.get("/api/graph/explore")
-async def explore_graph(focus_id: Optional[str] = None):
+async def explore_graph(
+    focus_id: Optional[str] = None,
+    max_nodes: int = Query(150, ge=1, le=500),
+    depth: int = Query(1, ge=1, le=3),
+):
     """
     Returns nodes and links representation of the citation network for the UI.
     """
     db = get_db()
     focus_ids = [focus_id] if focus_id else None
-    return db.get_graph_data(focus_paper_ids=focus_ids, max_nodes=150)
+    return db.get_graph_data(focus_paper_ids=focus_ids, max_nodes=max_nodes, depth=depth)
+
+
+@app.get("/api/graph/metrics")
+async def graph_metrics():
+    """Return graph analytics for dashboards and diagnostics."""
+    db = get_db()
+    metrics = db.get_graph_metrics() or {}
+    return {
+        "graph_stats": metrics.get("graph_stats", {}),
+        "foundational_papers": metrics.get("foundational_papers", []),
+        "bridge_papers": metrics.get("bridge_papers", []),
+        "community_summaries": metrics.get("community_summaries", []),
+        "disconnected_topic_pairs": metrics.get("disconnected_pairs", []),
+    }
+
+
+@app.get("/api/papers/{paper_id}/neighbors")
+async def get_paper_neighbors_endpoint(
+    paper_id: str,
+    max_nodes: int = Query(50, ge=1, le=250),
+    depth: int = Query(1, ge=1, le=3),
+):
+    """Return a focused neighborhood graph around a single paper."""
+    db = get_db()
+    if not db.get_paper(paper_id):
+        raise HTTPException(status_code=404, detail="Paper not found")
+    return db.get_graph_data(focus_paper_ids=[paper_id], max_nodes=max_nodes, depth=depth)
 
 @app.get("/api/corpus/audit")
 async def corpus_audit():
@@ -339,6 +370,7 @@ async def graph_health():
         "edge_coverage": edge_coverage,
         "foundational_papers": metrics.get("foundational_papers", [])[:5],
         "bridge_papers": metrics.get("bridge_papers", [])[:5],
+        "community_summaries": metrics.get("community_summaries", [])[:10],
         "disconnected_topic_pairs": metrics.get("disconnected_pairs", []),
     }
 

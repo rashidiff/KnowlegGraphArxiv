@@ -35,7 +35,12 @@ class BaseDatabase(ABC):
         pass
 
     @abstractmethod
-    def get_graph_data(self, focus_paper_ids: Optional[List[str]] = None, max_nodes: int = 150) -> Dict[str, Any]:
+    def get_graph_data(
+        self,
+        focus_paper_ids: Optional[List[str]] = None,
+        max_nodes: int = 150,
+        depth: int = 1,
+    ) -> Dict[str, Any]:
         """Get graph nodes and edges for the D3 interactive visualization."""
         pass
 

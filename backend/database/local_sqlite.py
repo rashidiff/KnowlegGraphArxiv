@@ -4,6 +4,7 @@ import time
 import sqlite3
 import numpy as np
 import networkx as nx
+from collections import deque
 from typing import List, Dict, Any, Optional
 from backend.database.base import BaseDatabase
 from backend.constants import TAXONOMY
@@ -20,6 +21,7 @@ class LocalSQLiteDB(BaseDatabase):
         self._cached_metrics: Optional[Dict[str, Any]] = None
         self._cache_time: float = 0.0
         self._metrics_ttl: float = 300.0  # 5 minutes
+        self._undirected_graph: Optional[nx.Graph] = None
         self.init_db()
         self._load_graph()
 
@@ -111,6 +113,7 @@ class LocalSQLiteDB(BaseDatabase):
                 G.add_edge(row["source_id"], row["target_id"])
                 
         self._graph = G
+        self._undirected_graph = G.to_undirected()
 
     def insert_papers(self, papers: List[Dict[str, Any]]) -> None:
         cursor = self.conn.cursor()
@@ -207,21 +210,6 @@ class LocalSQLiteDB(BaseDatabase):
         if not all_papers:
             return []
 
-        # Hard filter: only papers whose title or abstract actually contains
-        # one of the query keywords — keyword ranking below is a bonus on top
-        # of this, not a substitute for it.
-        if keywords:
-            all_papers = [
-                p for p in all_papers
-                if any(
-                    kw.lower() in (p["title"] or "").lower()
-                    or kw.lower() in (p["abstract"] or "").lower()
-                    for kw in keywords
-                )
-            ]
-            if not all_papers:
-                return []
-
         # Ensure graph metrics are active
         pageranks = nx.pagerank(self._graph) if self._graph and len(self._graph) > 0 else {}
         
@@ -270,13 +258,19 @@ class LocalSQLiteDB(BaseDatabase):
             
             # If keywords provided, perform simple keyword bonus
             keyword_score = 0.0
+            title_match_score = 0.0
             if keywords:
                 title_lower = (p["title"] or "").lower()
                 abstract_lower = (p["abstract"] or "").lower()
-                matches = sum(1 for kw in keywords if kw.lower() in title_lower or kw.lower() in abstract_lower)
-                keyword_score = matches / len(keywords)
-                # Blend keyword score with semantic similarity (70% semantic, 30% keyword)
-                similarity = 0.7 * similarity + 0.3 * keyword_score
+                normalized_keywords = [kw.lower() for kw in keywords if kw.strip()]
+                if normalized_keywords:
+                    matches = sum(1 for kw in normalized_keywords if kw in title_lower or kw in abstract_lower)
+                    title_matches = sum(1 for kw in normalized_keywords if kw in title_lower)
+                    keyword_score = matches / len(normalized_keywords)
+                    title_match_score = title_matches / len(normalized_keywords)
+                    # Keywords should boost strong lexical hits without eliminating
+                    # semantically relevant papers that use different terminology.
+                    similarity = 0.75 * similarity + 0.25 * keyword_score
 
             # B. Citation Count Score (25%)
             citations = p["citation_count"] or 0
@@ -293,17 +287,17 @@ class LocalSQLiteDB(BaseDatabase):
             # E. Venue Quality (5%)
             venue_quality = p["venue_quality"] or 0.0
 
-            # Weighted final score (gated by semantic similarity to filter out irrelevant highly-cited papers)
-            if similarity < 0.65:
-                final_score = 0.1 * similarity
-            else:
-                final_score = (
-                    0.45 * similarity +
-                    0.25 * citation_score +
-                    0.15 * normalized_centrality +
-                    0.10 * recency +
-                    0.05 * venue_quality
-                )
+            # Weighted final score. Semantic relevance remains the largest factor,
+            # while keyword, graph, citation, and freshness signals refine ordering.
+            final_score = (
+                0.48 * similarity +
+                0.16 * citation_score +
+                0.14 * normalized_centrality +
+                0.10 * recency +
+                0.07 * keyword_score +
+                0.03 * title_match_score +
+                0.02 * venue_quality
+            )
 
             p["authors"] = json.loads(p["authors"]) if isinstance(p["authors"], str) else (p["authors"] or [])
             p["section_headers"] = json.loads(p["section_headers"]) if isinstance(p["section_headers"], str) else (p["section_headers"] or [])
@@ -311,6 +305,7 @@ class LocalSQLiteDB(BaseDatabase):
             p["final_score"] = final_score
             p["graph_centrality"] = normalized_centrality
             p["semantic_similarity"] = similarity
+            p["keyword_score"] = keyword_score
             
             scored_papers.append(p)
 
@@ -389,7 +384,7 @@ class LocalSQLiteDB(BaseDatabase):
             try:
                 path = nx.shortest_path(self._graph, source=start_id, target=end_id)
             except (nx.NetworkXNoPath, nx.NodeNotFound):
-                if not hasattr(self, "_undirected_graph") or self._undirected_graph is None:
+                if self._undirected_graph is None:
                     self._undirected_graph = self._graph.to_undirected()
                 path = nx.shortest_path(self._undirected_graph, source=start_id, target=end_id)
                 
@@ -407,10 +402,28 @@ class LocalSQLiteDB(BaseDatabase):
         except Exception:
             return []
 
-    def get_graph_data(self, focus_paper_ids: Optional[List[str]] = None, max_nodes: int = 150) -> Dict[str, Any]:
+    def get_graph_data(
+        self,
+        focus_paper_ids: Optional[List[str]] = None,
+        max_nodes: int = 150,
+        depth: int = 1,
+    ) -> Dict[str, Any]:
         """Return nodes and edges. If focus_paper_ids is provided, filter nodes in neighborhood."""
         if not self._graph or len(self._graph) == 0:
-            return {"nodes": [], "links": []}
+            return {
+                "nodes": [],
+                "links": [],
+                "meta": {
+                    "focus_ids": focus_paper_ids or [],
+                    "max_nodes": max_nodes,
+                    "depth": depth,
+                    "returned_nodes": 0,
+                    "returned_links": 0,
+                },
+            }
+
+        max_nodes = max(1, min(max_nodes, 500))
+        depth = max(1, min(depth, 3))
 
         # Determine subset of nodes to return
         nodes_to_include = set()
@@ -418,33 +431,58 @@ class LocalSQLiteDB(BaseDatabase):
             # First, add all focus papers that exist in our graph.
             valid_focus = [pid for pid in focus_paper_ids if self._graph.has_node(pid)]
             nodes_to_include.update(valid_focus)
-            
-            # Next, find neighbors. To avoid blowing up the graph, we count how many focus papers
-            # each neighbor connects to (cited by or cites).
-            neighbor_counts = {}
-            for pid in valid_focus:
-                for neighbor in list(self._graph.successors(pid)) + list(self._graph.predecessors(pid)):
-                    if neighbor not in nodes_to_include:
-                        neighbor_counts[neighbor] = neighbor_counts.get(neighbor, 0) + 1
-            
-            # 1. Prioritize shared neighbors (co-citations, count >= 2) to show strong community connections
-            shared_neighbors = [n for n, count in neighbor_counts.items() if count >= 2]
-            nodes_to_include.update(shared_neighbors)
-            
-            # 2. Fill the remaining space up to max_nodes with top cited direct neighbors
-            if len(nodes_to_include) < max_nodes:
-                remaining_slots = max_nodes - len(nodes_to_include)
-                sorted_neighbors = sorted(
-                    [(n, self._graph.nodes[n].get("citation_count", 0)) for n in neighbor_counts if n not in nodes_to_include],
-                    key=lambda x: x[1],
-                    reverse=True
-                )
-                nodes_to_include.update([n for n, _ in sorted_neighbors[:remaining_slots]])
+
+            candidates: Dict[str, Dict[str, Any]] = {}
+            queue = deque((pid, 0) for pid in valid_focus)
+            visited = set(valid_focus)
+
+            while queue:
+                current, current_depth = queue.popleft()
+                if current_depth >= depth:
+                    continue
+                neighbors = set(self._graph.successors(current)) | set(self._graph.predecessors(current))
+                for neighbor in neighbors:
+                    if neighbor not in valid_focus:
+                        entry = candidates.setdefault(
+                            neighbor,
+                            {
+                                "distance": current_depth + 1,
+                                "shared_focus_links": 0,
+                                "citation_count": self._graph.nodes[neighbor].get("citation_count", 0),
+                            },
+                        )
+                        entry["distance"] = min(entry["distance"], current_depth + 1)
+                        if current in valid_focus or any(
+                            self._graph.has_edge(neighbor, focus) or self._graph.has_edge(focus, neighbor)
+                            for focus in valid_focus
+                        ):
+                            entry["shared_focus_links"] += 1
+
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        queue.append((neighbor, current_depth + 1))
+
+            sorted_candidates = sorted(
+                candidates.items(),
+                key=lambda item: (
+                    item[1]["distance"],
+                    -item[1]["shared_focus_links"],
+                    -item[1]["citation_count"],
+                    item[0],
+                ),
+            )
+            remaining_slots = max_nodes - len(nodes_to_include)
+            nodes_to_include.update([node_id for node_id, _ in sorted_candidates[:remaining_slots]])
             
         else:
             # Select top max_nodes by citation count
             sorted_nodes = sorted(self._graph.nodes(data=True), key=lambda x: x[1].get('citation_count', 0), reverse=True)
             nodes_to_include = {node[0] for node in sorted_nodes[:max_nodes]}
+
+        metrics = self.get_graph_metrics() if self._cached_metrics or len(nodes_to_include) <= 300 else {}
+        communities = metrics.get("communities", {}) if metrics else {}
+        pageranks = metrics.get("pagerank_scores", {}) if metrics else {}
+        betweenness = metrics.get("betweenness_scores", {}) if metrics else {}
 
         # Build list of nodes
         nodes = []
@@ -461,7 +499,12 @@ class LocalSQLiteDB(BaseDatabase):
                 "title": node_data.get("title", ""),
                 "year": node_data.get("year", 2026),
                 "citation_count": node_data.get("citation_count", 0),
-                "topic": topic
+                "topic": topic,
+                "in_degree": int(self._graph.in_degree(node_id)),
+                "out_degree": int(self._graph.out_degree(node_id)),
+                "community": communities.get(node_id),
+                "pagerank": pageranks.get(node_id, 0.0),
+                "betweenness": betweenness.get(node_id, 0.0),
             })
 
         # Build links
@@ -474,11 +517,22 @@ class LocalSQLiteDB(BaseDatabase):
                     "type": "cites"
                 })
 
-        return {"nodes": nodes, "links": links}
+        return {
+            "nodes": nodes,
+            "links": links,
+            "meta": {
+                "focus_ids": focus_paper_ids or [],
+                "max_nodes": max_nodes,
+                "depth": depth,
+                "returned_nodes": len(nodes),
+                "returned_links": len(links),
+            },
+        }
 
     def _invalidate_cache(self) -> None:
         self._cached_metrics = None
         self._cache_time = 0.0
+        self._undirected_graph = self._graph.to_undirected() if self._graph is not None else None
 
     def get_graph_metrics(self) -> Dict[str, Any]:
         if not self._graph or len(self._graph) == 0:
@@ -502,7 +556,7 @@ class LocalSQLiteDB(BaseDatabase):
         undirected_G = self._graph.to_undirected()
         community_map: Dict[str, int] = {}
         try:
-            communities = nx.community.louvain_communities(undirected_G)
+            communities = nx.community.louvain_communities(undirected_G, seed=42)
             for i, comm in enumerate(communities):
                 for node_id in comm:
                     community_map[node_id] = i
@@ -520,6 +574,28 @@ class LocalSQLiteDB(BaseDatabase):
         avg_degree = sum(degrees) / len(degrees) if degrees else 0.0
         components = nx.connected_components(undirected_G)
         n_components = sum(1 for _ in components)
+        largest_component_size = max((len(c) for c in nx.connected_components(undirected_G)), default=0)
+
+        community_summaries = []
+        for comm_id in sorted(set(community_map.values())):
+            members = [node_id for node_id, cid in community_map.items() if cid == comm_id]
+            top_members = sorted(
+                members,
+                key=lambda node_id: self._graph.nodes[node_id].get("citation_count", 0),
+                reverse=True,
+            )[:5]
+            community_summaries.append({
+                "community": comm_id,
+                "size": len(members),
+                "top_papers": [
+                    {
+                        "id": node_id,
+                        "title": self._graph.nodes[node_id].get("title", ""),
+                        "citation_count": self._graph.nodes[node_id].get("citation_count", 0),
+                    }
+                    for node_id in top_members
+                ],
+            })
 
         metrics = {
             "foundational_papers": [
@@ -540,7 +616,9 @@ class LocalSQLiteDB(BaseDatabase):
                 "density": density,
                 "avg_degree": avg_degree,
                 "connected_components": n_components,
+                "largest_component_size": largest_component_size,
             },
+            "community_summaries": community_summaries,
         }
 
         self._cached_metrics = metrics

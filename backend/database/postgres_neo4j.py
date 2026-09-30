@@ -259,21 +259,6 @@ class PostgresNeo4jDB(BaseDatabase):
 
         all_papers = [dict(row) for row in rows]
 
-        # Hard filter: only papers whose title or abstract actually contains
-        # one of the query keywords — keyword ranking below is a bonus on top
-        # of this, not a substitute for it.
-        if keywords:
-            all_papers = [
-                p for p in all_papers
-                if any(
-                    kw.lower() in (p["title"] or "").lower()
-                    or kw.lower() in (p["abstract"] or "").lower()
-                    for kw in keywords
-                )
-            ]
-            if not all_papers:
-                return []
-
         # Norm statistics
         years = [p["year"] for p in all_papers if p["year"] is not None]
         min_year = min(years) if years else 2000
@@ -291,12 +276,18 @@ class PostgresNeo4jDB(BaseDatabase):
             similarity = (similarity + 1.0) / 2.0
 
             # Keywords search bonus
+            keyword_score = 0.0
+            title_match_score = 0.0
             if keywords:
-                title_lower = p["title"].lower()
+                title_lower = (p["title"] or "").lower()
                 abstract_lower = (p["abstract"] or "").lower()
-                matches = sum(1 for kw in keywords if kw.lower() in title_lower or kw.lower() in abstract_lower)
-                keyword_score = matches / len(keywords)
-                similarity = 0.7 * similarity + 0.3 * keyword_score
+                normalized_keywords = [kw.lower() for kw in keywords if kw.strip()]
+                if normalized_keywords:
+                    matches = sum(1 for kw in normalized_keywords if kw in title_lower or kw in abstract_lower)
+                    title_matches = sum(1 for kw in normalized_keywords if kw in title_lower)
+                    keyword_score = matches / len(normalized_keywords)
+                    title_match_score = title_matches / len(normalized_keywords)
+                    similarity = 0.75 * similarity + 0.25 * keyword_score
 
             # Citation score
             citations = p["citation_count"] or 0
@@ -314,21 +305,20 @@ class PostgresNeo4jDB(BaseDatabase):
             # Venue quality
             venue_quality = p["venue_quality"] or 0.0
 
-            # Final rank (gated by semantic similarity to filter out irrelevant highly-cited papers)
-            if similarity < 0.65:
-                final_score = 0.1 * similarity
-            else:
-                final_score = (
-                    0.45 * similarity +
-                    0.25 * citation_score +
-                    0.15 * normalized_centrality +
-                    0.10 * recency +
-                    0.05 * venue_quality
-                )
+            final_score = (
+                0.48 * similarity +
+                0.16 * citation_score +
+                0.14 * normalized_centrality +
+                0.10 * recency +
+                0.07 * keyword_score +
+                0.03 * title_match_score +
+                0.02 * venue_quality
+            )
 
             p["final_score"] = final_score
             p["graph_centrality"] = normalized_centrality
             p["semantic_similarity"] = similarity
+            p["keyword_score"] = keyword_score
             
             p.pop("embedding", None)
             scored_papers.append(p)
@@ -384,14 +374,25 @@ class PostgresNeo4jDB(BaseDatabase):
                 return record["path"]
             return []
 
-    def get_graph_data(self, focus_paper_ids: Optional[List[str]] = None, max_nodes: int = 150) -> Dict[str, Any]:
+    def get_graph_data(
+        self,
+        focus_paper_ids: Optional[List[str]] = None,
+        max_nodes: int = 150,
+        depth: int = 1,
+    ) -> Dict[str, Any]:
+        max_nodes = max(1, min(max_nodes, 500))
+        depth = max(1, min(depth, 3))
         with self.neo4j_driver.session() as session:
             if focus_paper_ids:
                 # Retrieve all citation paths directly connected to focus papers
                 # This fetches nodes and relationships for focus papers and their neighbors.
-                query = """
-                MATCH (p1:Paper)-[:CITES]->(p2:Paper)
-                WHERE p1.id IN $ids OR p2.id IN $ids
+                query = f"""
+                MATCH (focus:Paper)
+                WHERE focus.id IN $ids
+                MATCH path=(focus)-[:CITES*1..{depth}]-(neighbor:Paper)
+                WITH relationships(path) AS rels
+                UNWIND rels AS rel
+                WITH DISTINCT startNode(rel) AS p1, endNode(rel) AS p2
                 RETURN p1.id AS src, p1.title AS src_title, p1.year AS src_year, p1.citation_count AS src_citations,
                        p2.id AS tgt, p2.title AS tgt_title, p2.year AS tgt_year, p2.citation_count AS tgt_citations
                 """
@@ -483,7 +484,17 @@ class PostgresNeo4jDB(BaseDatabase):
                     if u in nodes_to_include and v in nodes_to_include:
                         links.append({"source": u, "target": v, "type": "cites"})
                         
-                return {"nodes": nodes, "links": links}
+                return {
+                    "nodes": nodes,
+                    "links": links,
+                    "meta": {
+                        "focus_ids": focus_paper_ids or [],
+                        "max_nodes": max_nodes,
+                        "depth": depth,
+                        "returned_nodes": len(nodes),
+                        "returned_links": len(links),
+                    },
+                }
             else:
                 # Retrieve top max_nodes by citation count
                 query = """
@@ -514,7 +525,17 @@ class PostgresNeo4jDB(BaseDatabase):
                 links_result = session.run(links_query, ids=ids)
                 links = [{"source": r["src"], "target": r["tgt"], "type": "cites"} for r in links_result]
                 
-                return {"nodes": nodes, "links": links}
+                return {
+                    "nodes": nodes,
+                    "links": links,
+                    "meta": {
+                        "focus_ids": [],
+                        "max_nodes": max_nodes,
+                        "depth": depth,
+                        "returned_nodes": len(nodes),
+                        "returned_links": len(links),
+                    },
+                }
 
     def get_graph_metrics(self) -> Dict[str, Any]:
         # Compute metrics by loading Neo4j Graph into NetworkX
@@ -525,18 +546,23 @@ class PostgresNeo4jDB(BaseDatabase):
             for r in result:
                 G.add_edge(r["src"], r["tgt"])
                 
-            nodes_res = session.run("MATCH (p:Paper) RETURN p.id AS id, p.title AS title")
+            nodes_res = session.run("""
+            MATCH (p:Paper)
+            RETURN p.id AS id, p.title AS title, p.citation_count AS citation_count
+            """)
             titles = {}
             for r in nodes_res:
                 titles[r["id"]] = r["title"] or ""
                 if not G.has_node(r["id"]):
                     G.add_node(r["id"])
+                G.nodes[r["id"]]["citation_count"] = r["citation_count"] or 0
 
         if len(G) == 0:
             return {}
 
         pr = nx.pagerank(G)
-        betweenness = nx.betweenness_centrality(G)
+        k_sample = min(100, len(G)) if len(G) > 0 else None
+        betweenness = nx.betweenness_centrality(G, k=k_sample) if k_sample else {}
         
         sorted_pr = sorted(pr.items(), key=lambda x: x[1], reverse=True)
         sorted_betweenness = sorted(betweenness.items(), key=lambda x: x[1], reverse=True)
@@ -544,13 +570,27 @@ class PostgresNeo4jDB(BaseDatabase):
         # louvain communities
         undirected_G = G.to_undirected()
         try:
-            communities = nx.community.louvain_communities(undirected_G)
+            communities = nx.community.louvain_communities(undirected_G, seed=42)
             community_map = {}
             for i, comm in enumerate(communities):
                 for node_id in comm:
                     community_map[node_id] = i
         except Exception:
             community_map = {}
+
+        degrees = [d for _, d in G.degree()]
+        community_summaries = []
+        for comm_id in sorted(set(community_map.values())):
+            members = [node_id for node_id, cid in community_map.items() if cid == comm_id]
+            top_members = sorted(members, key=lambda node_id: G.nodes[node_id].get("citation_count", 0), reverse=True)[:5]
+            community_summaries.append({
+                "community": comm_id,
+                "size": len(members),
+                "top_papers": [
+                    {"id": node_id, "title": titles.get(node_id, ""), "citation_count": G.nodes[node_id].get("citation_count", 0)}
+                    for node_id in top_members
+                ],
+            })
 
         return {
             "foundational_papers": [
@@ -563,7 +603,16 @@ class PostgresNeo4jDB(BaseDatabase):
             ],
             "communities": community_map,
             "pagerank_scores": pr,
-            "betweenness_scores": betweenness
+            "betweenness_scores": betweenness,
+            "graph_stats": {
+                "nodes": G.number_of_nodes(),
+                "edges": G.number_of_edges(),
+                "density": nx.density(G),
+                "avg_degree": sum(degrees) / len(degrees) if degrees else 0.0,
+                "connected_components": nx.number_connected_components(undirected_G),
+                "largest_component_size": max((len(c) for c in nx.connected_components(undirected_G)), default=0),
+            },
+            "community_summaries": community_summaries,
         }
 
     def get_papers_by_topic(self, topic_name: str, limit: int = 50) -> List[Dict[str, Any]]:

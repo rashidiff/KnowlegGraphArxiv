@@ -24,11 +24,20 @@ def test_corpus_status(api_client):
     assert "refresh_running" in data
 
 def test_explore_graph(api_client):
-    response = api_client.get("/api/graph/explore")
+    response = api_client.get("/api/graph/explore?max_nodes=25&depth=2")
     assert response.status_code == 200
     data = response.json()
     assert "nodes" in data
     assert "links" in data
+    assert "meta" in data
+
+def test_graph_metrics_endpoint(api_client):
+    response = api_client.get("/api/graph/metrics")
+    assert response.status_code == 200
+    data = response.json()
+    assert "graph_stats" in data
+    assert "foundational_papers" in data
+    assert "community_summaries" in data
 
 def test_search_papers_endpoint(api_client):
     response = api_client.get("/api/papers/search?q=agent&limit=5")

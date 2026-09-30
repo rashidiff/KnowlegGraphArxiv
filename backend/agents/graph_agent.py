@@ -207,7 +207,7 @@ Respond ONLY with JSON:
     # ── 8. Subgraph for graph view (use full DB graph focused on retrieved) ─
     retrieved_ids = [p["id"] for p in retrieved[:100]]
     try:
-        subgraph = db.get_graph_data(focus_paper_ids=retrieved_ids, max_nodes=150)
+        subgraph = db.get_graph_data(focus_paper_ids=retrieved_ids, max_nodes=150, depth=2)
     except Exception:
         subgraph = {"nodes": [], "links": []}
 
