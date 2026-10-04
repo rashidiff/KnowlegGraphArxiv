@@ -1,4 +1,5 @@
 import json
+import os
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -82,23 +83,39 @@ Output JSON:
 
     db = get_db()
 
+    # Cached, semantically ranked results are immediately useful for follow-up
+    # questions. Avoid making five external requests when the local corpus already
+    # has enough material; a caller can force live discovery with the env setting.
+    cached_results = db.search_papers(
+        query_embedding=query_embedding,
+        keywords=keywords,
+        topic=topic,
+        limit=100,
+    )
+    cache_min_results = int(os.getenv("RETRIEVER_CACHE_MIN_RESULTS", "20"))
+    force_live_search = os.getenv("RETRIEVER_FORCE_LIVE_SEARCH", "").lower() in {"1", "true", "yes"}
+    if len(cached_results) >= cache_min_results and not force_live_search:
+        print(f"[Retriever] Serving {len(cached_results)} ranked papers from local cache.")
+        return {"retrieved_papers": cached_results[:100]}
+
     # ── Step 2A: arXiv search (good for very recent papers) ──────────────
-    arxiv_a = search_arxiv(keywords, max_results=200)
+    live_limit = int(os.getenv("RETRIEVER_LIVE_RESULTS_PER_SOURCE", "60"))
+    arxiv_a = search_arxiv(keywords, max_results=live_limit)
 
     # ── Step 2B: arXiv second pass with broader keywords ─────────────────
     arxiv_b: list = []
     if broad_keywords:
         combined_broad = broad_keywords + ([keywords[0]] if keywords else [])
-        arxiv_b = search_arxiv(combined_broad, max_results=150)
+        arxiv_b = search_arxiv(combined_broad, max_results=live_limit)
 
     # ── Step 2C: arXiv raw user query search (highly robust) ─────────────
-    arxiv_raw = search_arxiv([query], max_results=200)
+    arxiv_raw = search_arxiv([query], max_results=live_limit)
 
     # ── Step 2D: Semantic Scholar direct search (best for citation data) ──
     # Query with both the raw user query (for best recall) and keyword-based query
-    s2_papers_raw = search_semantic_scholar(query, max_results=100)
+    s2_papers_raw = search_semantic_scholar(query, max_results=live_limit)
     s2_query  = " ".join(keywords[:3])
-    s2_papers_kw  = search_semantic_scholar(s2_query, max_results=100)
+    s2_papers_kw  = search_semantic_scholar(s2_query, max_results=live_limit)
     
     # Deduplicate Semantic Scholar papers first
     s2_papers = []
