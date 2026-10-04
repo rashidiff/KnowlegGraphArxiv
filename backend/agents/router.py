@@ -7,8 +7,9 @@ from backend.agents.state import AgentState
 def get_llm():
     """Helper to initialize the LLM using env variables."""
     api_key = os.getenv("OPENAI_API_KEY")
-    api_base = os.getenv("OPENAI_API_BASE", "https://api.deepseek.com/v1")
-    model_name = os.getenv("MODEL_NAME", "deepseek-chat")
+    # Prefer the documented names, while keeping existing deployments working.
+    api_base = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "https://api.deepseek.com/v1"
+    model_name = os.getenv("OPENAI_MODEL") or os.getenv("MODEL_NAME") or "deepseek-chat"
     
     return ChatOpenAI(
         openai_api_key=api_key,

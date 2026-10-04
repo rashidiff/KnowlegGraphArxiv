@@ -23,12 +23,12 @@ def get_db() -> BaseDatabase:
     pg_host = os.getenv("POSTGRES_HOST", "localhost")
     pg_port = os.getenv("POSTGRES_PORT", "5432")
     pg_user = os.getenv("POSTGRES_USER", "postgres")
-    pg_pass = os.getenv("POSTGRES_PASSWORD", "postgres")
+    pg_pass = os.getenv("POSTGRES_PASSWORD") or "postgres"
     pg_db = os.getenv("POSTGRES_DB", "agent_research_navigator")
 
     neo4j_uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
     neo4j_user = os.getenv("NEO4J_USER", "neo4j")
-    neo4j_pass = os.getenv("NEO4J_PASSWORD", "password")
+    neo4j_pass = os.getenv("NEO4J_PASSWORD") or "password"
 
     print("[DB Connection Manager] Attempting to connect to PostgreSQL + Neo4j...")
     try:
