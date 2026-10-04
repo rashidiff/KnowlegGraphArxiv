@@ -6,6 +6,7 @@ from backend.agents.state import AgentState
 from backend.agents.router import get_llm
 from backend.database.manager import get_db
 from backend.constants import TOPIC_ALIASES
+from backend.conversation import conversation_context
 
 _embedding_model = None
 
@@ -30,6 +31,7 @@ def retriever_node(state: AgentState) -> dict:
 
     query = state["query"]
     plan  = state.get("research_plan", "")
+    history = conversation_context(state.get("messages", []))
 
     # ── Step 1: LLM keyword extraction ────────────────────────────────────
     system_prompt = """You are a Search Intent Extractor for an academic research assistant.
@@ -57,7 +59,7 @@ Output JSON:
     llm      = get_llm()
     messages = [
         SystemMessage(content=system_prompt),
-        HumanMessage(content=f"Query: {query}\nResearch plan: {plan}"),
+        HumanMessage(content=f"{history}\n\nQuery: {query}\nResearch plan: {plan}"),
     ]
 
     try:

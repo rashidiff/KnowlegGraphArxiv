@@ -3,6 +3,7 @@ import json
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from backend.agents.state import AgentState
+from backend.conversation import conversation_context
 
 def get_llm():
     """Helper to initialize the LLM using env variables."""
@@ -31,6 +32,7 @@ def router_node(state: AgentState) -> dict:
         }
         
     query = state["query"]
+    history = conversation_context(state.get("messages", []))
     
     # We construct a prompt for the LLM to analyze the user's query for ambiguity.
     system_prompt = """You are the Orchestrator/Router of a scientific research knowledge graph system.
@@ -54,7 +56,7 @@ You must respond with a JSON object in this format:
     llm = get_llm()
     messages = [
         SystemMessage(content=system_prompt),
-        HumanMessage(content=f"User Query: {query}")
+        HumanMessage(content=f"{history}\n\nUser Query: {query}")
     ]
     
     try:

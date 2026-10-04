@@ -3,6 +3,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from backend.agents.state import AgentState
 from backend.agents.router import get_llm
+from backend.conversation import conversation_context
 
 def research_planner_node(state: AgentState) -> dict:
     """
@@ -10,6 +11,7 @@ def research_planner_node(state: AgentState) -> dict:
     paper types, and graph pathways need to be explored to answer the query.
     """
     query = state["query"]
+    history = conversation_context(state.get("messages", []))
     
     # If clarification history exists, append it to give the planner context
     clarification_context = ""
@@ -32,7 +34,7 @@ Keep the plan clear, structured, and focused. This plan will guide subsequent re
     llm = get_llm()
     messages = [
         SystemMessage(content=system_prompt),
-        HumanMessage(content=f"User Query: {query}{clarification_context}")
+        HumanMessage(content=f"{history}\n\nUser Query: {query}{clarification_context}")
     ]
     
     try:

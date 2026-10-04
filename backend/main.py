@@ -105,7 +105,7 @@ async def chat_endpoint(req: ChatRequest):
     """
     initial_state = {
         "query": req.query,
-        "messages": [],
+        "messages": req.history,
         "clarification_needed": False,
         "clarification_question": None,
         "clarification_answers": [],
@@ -151,7 +151,7 @@ async def chat_clarify_endpoint(req: ClarifyRequest):
     # We bypass the router ambiguity checking by providing a flag
     initial_state = {
         "query": req.query,
-        "messages": [],
+        "messages": req.history,
         "clarification_needed": False,
         "clarification_question": None,
         "clarification_answers": updated_clarifications,

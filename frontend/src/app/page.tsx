@@ -138,7 +138,10 @@ export default function Home() {
       const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: userMessage }),
+        body: JSON.stringify({
+          query: userMessage,
+          history: messages.slice(-12).map(({ role, content }) => ({ role, content })),
+        }),
       });
 
       if (!response.ok) {
@@ -177,6 +180,7 @@ export default function Home() {
           question: question,
           answer: answer,
           clarification_answers: clarificationAnswers,
+          history: messages.slice(-12).map(({ role, content }) => ({ role, content })),
         }),
       });
 
