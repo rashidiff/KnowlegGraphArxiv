@@ -11,6 +11,18 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   isClarifying?: boolean;
+  evidence?: EvidenceCard[];
+}
+
+interface EvidenceCard {
+  paper_id: string;
+  title: string;
+  year?: number;
+  venue?: string;
+  citation_count: number;
+  source_url?: string;
+  locator: string;
+  excerpt: string;
 }
 
 export default function Home() {
@@ -202,7 +214,11 @@ export default function Home() {
     }
 
     // 2. Set response context
-    setMessages((prev) => [...prev, { role: 'assistant', content: data.final_response }]);
+    setMessages((prev) => [...prev, {
+      role: 'assistant',
+      content: data.final_response,
+      evidence: data.evidence || [],
+    }]);
     setRetrievedPapers(data.retrieved_papers || []);
     setGraphContext(data.graph_context || {});
 

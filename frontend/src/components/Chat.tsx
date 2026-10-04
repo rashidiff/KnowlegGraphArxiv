@@ -9,6 +9,18 @@ interface Message {
   isClarifying?: boolean;
   clarifyingQuestion?: string;
   clarifyingAnswers?: any[];
+  evidence?: EvidenceCard[];
+}
+
+interface EvidenceCard {
+  paper_id: string;
+  title: string;
+  year?: number;
+  venue?: string;
+  citation_count: number;
+  source_url?: string;
+  locator: string;
+  excerpt: string;
 }
 
 interface ChatProps {
@@ -197,6 +209,24 @@ export default function Chat({
                   <p className="select-text whitespace-pre-wrap">{msg.content}</p>
                 ) : (
                   renderMessageContent(msg.content)
+                )}
+                {msg.role === 'assistant' && msg.evidence && msg.evidence.length > 0 && (
+                  <div className="mt-4 pt-3 border-t border-border flex flex-col gap-2">
+                    <span className="text-[10px] font-semibold text-foreground/55 uppercase tracking-wider">Evidence used</span>
+                    {msg.evidence.map((item) => (
+                      <div key={item.paper_id} className="rounded-lg border border-border bg-sidebar/60 p-2.5">
+                        <button onClick={() => onSelectPaper(item.paper_id)} className="block text-left text-[11px] font-semibold text-primary hover:underline">
+                          {item.title}
+                        </button>
+                        <p className="mt-1 text-[10px] leading-relaxed text-foreground/75 line-clamp-3">{item.excerpt || 'No abstract available.'}</p>
+                        <div className="mt-2 flex items-center gap-2 text-[9px] text-foreground/50">
+                          <span>{item.locator}</span>
+                          {item.year && <span>{item.year}</span>}
+                          {item.source_url && <a href={item.source_url} target="_blank" rel="noreferrer" className="text-primary hover:underline">Open source</a>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

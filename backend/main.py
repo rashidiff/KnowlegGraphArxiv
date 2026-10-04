@@ -17,6 +17,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from backend.database.manager import get_db
 from backend.agents.graph import build_workflow
 from backend.agents.retriever import get_embedding_model
+from backend.evidence import build_evidence_cards
 
 # Load environment
 load_dotenv()
@@ -130,7 +131,9 @@ async def chat_endpoint(req: ChatRequest):
             "clarification_answers": final_state.get("clarification_answers", []),
             "final_response": final_state.get("final_response"),
             "retrieved_papers": [_safe_paper(p) for p in final_state.get("retrieved_papers", [])[:100]],
-            "graph_context": final_state.get("graph_context", {})
+            "graph_context": final_state.get("graph_context", {}),
+            "evidence": build_evidence_cards(final_state.get("retrieved_papers", [])),
+            "verification_report": final_state.get("verification_report", {}),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent workflow error: {str(e)}")
@@ -174,7 +177,9 @@ async def chat_clarify_endpoint(req: ClarifyRequest):
             "clarification_answers": final_state.get("clarification_answers", []),
             "final_response": final_state.get("final_response"),
             "retrieved_papers": [_safe_paper(p) for p in final_state.get("retrieved_papers", [])[:100]],
-            "graph_context": final_state.get("graph_context", {})
+            "graph_context": final_state.get("graph_context", {}),
+            "evidence": build_evidence_cards(final_state.get("retrieved_papers", [])),
+            "verification_report": final_state.get("verification_report", {}),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent workflow error: {str(e)}")
