@@ -29,6 +29,7 @@ def get_db() -> BaseDatabase:
     neo4j_uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
     neo4j_user = os.getenv("NEO4J_USER", "neo4j")
     neo4j_pass = os.getenv("NEO4J_PASSWORD") or "password"
+    connect_timeout = int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "5"))
 
     print("[DB Connection Manager] Attempting to connect to PostgreSQL + Neo4j...")
     try:
@@ -37,12 +38,14 @@ def get_db() -> BaseDatabase:
             "port": pg_port,
             "user": pg_user,
             "password": pg_pass,
-            "dbname": pg_db
+            "dbname": pg_db,
+            "connect_timeout": connect_timeout,
         }
         neo4j_config = {
             "uri": neo4j_uri,
             "user": neo4j_user,
-            "password": neo4j_pass
+            "password": neo4j_pass,
+            "connection_timeout": connect_timeout,
         }
         
         # Test connections by instantiating PostgresNeo4jDB

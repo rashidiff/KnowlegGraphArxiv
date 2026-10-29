@@ -23,7 +23,8 @@ class PostgresNeo4jDB(BaseDatabase):
             password=self.pg_config["password"],
             host=self.pg_config["host"],
             port=self.pg_config["port"],
-            database=self.pg_config["dbname"]
+            database=self.pg_config["dbname"],
+            connect_timeout=self.pg_config.get("connect_timeout", 5),
         )
         self.pg_conn.autocommit = True
         
@@ -34,7 +35,8 @@ class PostgresNeo4jDB(BaseDatabase):
         # Neo4j connection
         self.neo4j_driver = GraphDatabase.driver(
             self.neo4j_config["uri"],
-            auth=(self.neo4j_config["user"], self.neo4j_config["password"])
+            auth=(self.neo4j_config["user"], self.neo4j_config["password"]),
+            connection_timeout=self.neo4j_config.get("connection_timeout", 5),
         )
 
     def init_db(self) -> None:

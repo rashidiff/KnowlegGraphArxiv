@@ -92,6 +92,22 @@ def test_vector_search_does_not_require_keyword_match(test_db):
     assert [p["id"] for p in results] == ["semantic_only"]
     assert results[0]["keyword_score"] == 0.0
 
+
+def test_upserting_a_paper_preserves_its_topics_and_citations(test_db):
+    papers = [
+        {"id": "source", "title": "Original", "topics": ["LLM Agents"], "references": ["target"]},
+        {"id": "target", "title": "Target"},
+    ]
+    test_db.insert_papers(papers)
+
+    # This is what live re-enrichment does: it updates a cached paper by ID.
+    test_db.insert_papers([{"id": "source", "title": "Enriched title"}])
+
+    paper = test_db.get_paper("source")
+    assert paper["title"] == "Enriched title"
+    assert paper["topics"] == ["LLM Agents"]
+    assert paper["references"] == ["target"]
+
 def test_graph_metrics_calculation(test_db):
     p1 = {"id": "node_a", "title": "Paper A", "year": 2022, "citation_count": 100, "references": ["node_b"]}
     p2 = {"id": "node_b", "title": "Paper B", "year": 2020, "citation_count": 200, "references": []}

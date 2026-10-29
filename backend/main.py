@@ -45,7 +45,14 @@ def _safe_upload_path(filename: str | None) -> Path:
 
 def _require_admin_token(token: str | None) -> None:
     expected = os.getenv("CORPUS_RESET_TOKEN", "").strip()
-    if expected and not secrets.compare_digest(token or "", expected):
+    # A destructive endpoint must fail closed.  Treating an unset token as
+    # permission made any public deployment resettable by an anonymous caller.
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="Corpus reset is disabled. Configure CORPUS_RESET_TOKEN to enable it.",
+        )
+    if not secrets.compare_digest(token or "", expected):
         raise HTTPException(status_code=403, detail="Invalid or missing admin token.")
 
 app = FastAPI(title="Agentic Research Paper Knowledge Graph Navigator API")

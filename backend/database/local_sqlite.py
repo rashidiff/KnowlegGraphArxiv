@@ -123,12 +123,29 @@ class LocalSQLiteDB(BaseDatabase):
             if "embedding" in p and p["embedding"] is not None:
                 embedding_bytes = np.array(p["embedding"], dtype=np.float32).tobytes()
 
+            # Do not use INSERT OR REPLACE here.  In SQLite, REPLACE is a
+            # DELETE followed by an INSERT; that triggers the foreign-key
+            # cascades on topics/entities/citations and silently disconnects
+            # a paper every time fresh metadata is cached for it.
             cursor.execute("""
-            INSERT OR REPLACE INTO papers (
+            INSERT INTO papers (
                 id, title, abstract, authors, year, venue,
                 citation_count, venue_quality, embedding,
                 intro_summary, conclusion_summary, section_headers, arxiv_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                abstract = excluded.abstract,
+                authors = excluded.authors,
+                year = excluded.year,
+                venue = excluded.venue,
+                citation_count = excluded.citation_count,
+                venue_quality = excluded.venue_quality,
+                embedding = COALESCE(excluded.embedding, papers.embedding),
+                intro_summary = excluded.intro_summary,
+                conclusion_summary = excluded.conclusion_summary,
+                section_headers = excluded.section_headers,
+                arxiv_id = COALESCE(excluded.arxiv_id, papers.arxiv_id)
             """, (
                 p["id"],
                 p["title"],

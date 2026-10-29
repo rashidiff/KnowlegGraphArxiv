@@ -91,7 +91,7 @@ export default function Home() {
   const handleResetCorpus = async () => {
     if (!window.confirm('Clear all cached papers? The graph will rebuild dynamically from your queries.')) return;
     try {
-      const token = window.prompt('Admin token (leave blank if not configured):') || '';
+      const token = window.prompt('Admin token:') || '';
       const headers = token ? { 'X-Admin-Token': token } : undefined;
       const res = await fetch(apiUrl('/api/corpus/reset'), { method: 'DELETE', headers });
       if (res.ok) {

@@ -89,3 +89,12 @@ def test_admin_token_required_when_configured(monkeypatch):
 
     assert getattr(exc_info.value, "status_code", None) == 403
     _require_admin_token("secret-token")
+
+
+def test_admin_token_is_required_to_enable_reset(monkeypatch):
+    monkeypatch.delenv("CORPUS_RESET_TOKEN", raising=False)
+
+    with pytest.raises(Exception) as exc_info:
+        _require_admin_token(None)
+
+    assert getattr(exc_info.value, "status_code", None) == 503
