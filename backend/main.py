@@ -276,6 +276,36 @@ async def graph_metrics():
     }
 
 
+@app.get("/api/graph/path")
+def citation_path(
+    start_id: str = Query(min_length=1, max_length=500),
+    end_id: str = Query(min_length=1, max_length=500),
+):
+    """Find a stored citation connection without running the LLM workflow.
+
+    Connections can traverse citations in either direction. An empty result
+    means no connection was found in the indexed corpus, not in all literature.
+    """
+    db = get_db()
+    start = db.get_paper(start_id)
+    end = db.get_paper(end_id)
+    if not start or not end:
+        raise HTTPException(status_code=404, detail="Start or end paper not found")
+    if start_id == end_id:
+        path = [{k: start.get(k) for k in ("id", "title", "year", "authors")}]
+    else:
+        path = db.get_citation_path(start_id, end_id)
+    return {
+        "start_id": start_id,
+        "end_id": end_id,
+        "found": bool(path),
+        "hops": len(path) - 1 if path else None,
+        "path": path,
+        "relationship": "citation_connection",
+        "note": "Connections may follow citations in either direction. Coverage is limited to the indexed corpus and database traversal limits.",
+    }
+
+
 @app.get("/api/papers/{paper_id}/neighbors")
 async def get_paper_neighbors_endpoint(
     paper_id: str,

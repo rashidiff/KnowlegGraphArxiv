@@ -19,6 +19,7 @@ An agentic, graph-reasoning web application designed to navigate, traverse, and 
     *   `Verifier Agent (Critic)`: Fact-checks agent statements against raw paper abstracts.
     *   `Responder Agent`: Formulates final grounding outputs.
 *   **Interactive D3 Force Graph UI**: A clean, research-oriented dashboard visualizing paper nodes (sized by citations, colored by topic) and animating links along citation paths.
+*   **Citation Connection Explorer**: Select two papers in the graph's **Connect papers** controls to find a stored citation connection without an LLM call. Inspect intermediate papers, view the focused path, export its JSON, or clear it to restore the graph. Connections may traverse citations in either direction; they do not imply chronological reading order. A missing path only describes the indexed corpus and database traversal limits (Neo4j searches up to 10 hops).
 
 ---
 
@@ -80,6 +81,11 @@ This is the fastest, zero-config method.
 ---
 
 ## Production Notes
+
+The explorer is also available through `GET /api/graph/path?start_id=...&end_id=...`.
+The response includes `found`, `hops`, and ordered `path` metadata. Disconnected
+papers return an empty path with `hops: null`; unknown IDs return HTTP 404.
+Use URL-encoded query parameters for IDs containing slashes, such as OpenAlex URLs.
 
 * Set `CORS_ALLOWED_ORIGINS` to the exact frontend origins instead of using broad browser access.
 * Set `NEXT_PUBLIC_API_BASE_URL` to the public backend URL used by the browser.

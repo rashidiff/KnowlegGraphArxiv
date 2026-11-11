@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import CitationPathExplorer, { PathPaper } from './CitationPathExplorer';
 import { Network, ZoomIn, ZoomOut, Maximize, Download } from 'lucide-react';
 
 // Dynamically load ForceGraph2D as it relies on the browser canvas and window object
@@ -49,19 +50,25 @@ export default function GraphView({
   const fgRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 600, height: 500 });
+  const [exploredPath, setExploredPath] = useState<PathPaper[] | null>(null);
+  useEffect(() => { setExploredPath(null); }, [graphData]);
+  const displayedGraph = useMemo(() => exploredPath ? {
+    nodes: exploredPath.map(p => ({ ...p, year: p.year || 0, citation_count: 0, topic: 'Citation path' })),
+    links: exploredPath.slice(1).map((p, i) => ({ source: exploredPath[i].id, target: p.id, type: 'citation_connection' })),
+  } : graphData, [exploredPath, graphData]);
   const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
   const [highlightedLinks, setHighlightedLinks] = useState<Set<string>>(new Set());
 
   // Configure d3 forces for better node spacing (stronger repulsion, longer links)
   useEffect(() => {
-    if (!fgRef.current || !graphData.nodes.length) return;
+    if (!fgRef.current || !displayedGraph.nodes.length) return;
     const fg = fgRef.current;
     const charge = fg.d3Force('charge');
     if (charge) charge.strength(-400);
     const link = fg.d3Force('link');
     if (link) link.distance(120).strength(0.5);
     fg.d3ReheatSimulation();
-  }, [graphData]);
+  }, [displayedGraph]);
 
   // Handle responsive resize
   useEffect(() => {
@@ -73,8 +80,9 @@ export default function GraphView({
       });
     };
     handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const observer = new ResizeObserver(handleResize);
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
   }, []);
 
   // Compute highlighted nodes and links from citation paths
@@ -82,7 +90,7 @@ export default function GraphView({
     const nodes = new Set<string>();
     const links = new Set<string>();
 
-    highlightedPaths.forEach((pathObj) => {
+    (exploredPath ? [{ path: exploredPath }] : highlightedPaths).forEach((pathObj) => {
       const path = pathObj.path || [];
       for (let i = 0; i < path.length; i++) {
         nodes.add(path[i].id);
@@ -98,7 +106,7 @@ export default function GraphView({
 
     setHighlightedNodes(nodes);
     setHighlightedLinks(links);
-  }, [highlightedPaths]);
+  }, [highlightedPaths, exploredPath]);
 
   // Topic color mapper
   const getNodeColor = (node: Node) => {
@@ -152,7 +160,7 @@ export default function GraphView({
 
   const handleExportJSON = () => {
     if (!hasData) return;
-    const jsonStr = JSON.stringify(graphData, null, 2);
+    const jsonStr = JSON.stringify({ nodes: displayedGraph.nodes, links: displayedGraph.links.map(link => ({ ...link, source: typeof link.source === 'object' ? link.source.id : link.source, target: typeof link.target === 'object' ? link.target.id : link.target })) }, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -166,7 +174,7 @@ export default function GraphView({
   const hasData = graphData && graphData.nodes && graphData.nodes.length > 0;
 
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-sidebar border border-border rounded-xl overflow-hidden flex flex-col">
+    <div className="relative w-full h-full bg-sidebar border border-border rounded-xl overflow-hidden flex flex-col">
       {/* Header bar */}
       <div className="flex items-center justify-between px-4 py-3 bg-card border-b border-border">
         <div className="flex items-center gap-2">
@@ -207,15 +215,17 @@ export default function GraphView({
         </div>
       </div>
 
+      {hasData && <CitationPathExplorer key={graphData.nodes.map(n => n.id).join(',')} papers={graphData.nodes} onPath={setExploredPath} onSelectPaper={onSelectNode} />}
+
       {/* Graph area */}
-      <div className="flex-1 w-full relative">
+      <div ref={containerRef} className="flex-1 min-h-0 w-full relative">
         {hasData ? (
           <ForceGraph2D
-            key={graphData.nodes.map(n => n.id).join(',')}
+            key={displayedGraph.nodes.map(n => n.id).join(',')}
             ref={fgRef}
-            graphData={graphData}
+            graphData={displayedGraph}
             width={dimensions.width}
-            height={dimensions.height - 45} // Deduct header height
+            height={dimensions.height}
             nodeLabel={(node: any) => `${node.title} (${node.year})`}
             nodeColor={(node: any) => getNodeColor(node)}
             nodeVal={(node: any) => getNodeVal(node)}
@@ -233,7 +243,7 @@ export default function GraphView({
             linkDirectionalParticles={(link: any) => {
               const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
               const targetId = typeof link.target === 'object' ? link.target.id : link.target;
-              return highlightedLinks.has(`${sourceId}->${targetId}`) ? 3 : 0;
+              return !exploredPath && highlightedLinks.has(`${sourceId}->${targetId}`) ? 3 : 0;
             }}
             linkDirectionalParticleWidth={2}
             linkDirectionalParticleColor={() => (isDarkMode ? '#FFF' : '#2563EB')}
