@@ -35,6 +35,41 @@ An agentic, graph-reasoning web application designed to navigate, traverse, and 
 
 ## ⚙️ Installation & Setup
 
+### One-command local startup (recommended)
+
+Install **Python 3.11** and **Node.js 20.9 or newer** (including npm) once.
+Then clone and start from a terminal:
+
+```powershell
+git clone https://github.com/rashidiff/KnowlegGraphArxiv.git
+cd KnowlegGraphArxiv
+.\start.cmd
+```
+
+The command creates `.venv`, installs backend and frontend dependencies, and
+copies `.env.example` to `.env` if needed. On Windows it opens **Notepad** when
+the API key is missing. Enter `OPENAI_API_KEY`, save, close the editor, and press
+Enter in the terminal. DeepSeek is the default provider; for OpenAI also set
+`OPENAI_BASE_URL=https://api.openai.com/v1` and `OPENAI_MODEL` to a model available
+to your account. A valid provider key and internet access are required for chat.
+
+An empty database is seeded with 100 papers (and the local embedding model is
+downloaded on first use). This can take several minutes and requires internet
+access and disk space for Python/ML packages. Existing papers are preserved.
+Docker is optional: the existing SQLite fallback is used when databases are absent.
+The browser opens at http://localhost:3000 after both services are ready.
+Keep the terminal open; **Ctrl+C** stops both services.
+
+Run `.\start.cmd` again for subsequent sessions. Dependency installs are reused
+until their manifests change; `.env` is never overwritten. Use
+`.\start.cmd --edit-env` to reopen configuration, `--seed-count 2500` to change
+the initial corpus size, or `--no-browser` to suppress browser opening.
+Ports 8000 and 3000 must be available. Installation errors are shown in the terminal;
+fix the reported problem and rerun the same command.
+
+On macOS/Linux, use `python3.11 scripts/start.py`; configuration opens in `$EDITOR`
+(or `nano`). Manual setup remains available below.
+
 ### 1. Configure Environment variables
 Copy `.env.example` to `.env` and configure your API key (the system supports DeepSeek by default, compatible with OpenAI SDK). Ensure your `OPENAI_API_KEY` is defined.
 
@@ -76,7 +111,7 @@ This is the fastest, zero-config method.
     ```bash
     docker compose up -d
     ```
-2.  Once databases boot, run the seeding script `python backend/scripts/seed_data.py 2500`. It will automatically detect Postgres and Neo4j, populate them, and start Uvicorn/Next.js.
+2.  Once databases boot, run `start.cmd` (or `python3.11 scripts/start.py`). It detects Postgres and Neo4j, seeds an empty corpus, and starts Uvicorn/Next.js. The manual seeding command only populates data; it does not start servers.
 
 ---
 
